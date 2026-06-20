@@ -1,0 +1,22 @@
+# Render Blueprint — deploys the FastAPI service on the free plan.
+# In Render: New → Blueprint → connect this repo. Then set the secret env vars
+# (DATABASE_URL, SUPABASE_JWT_SECRET, ALLOWED_ORIGINS) in the dashboard.
+services:
+  - type: web
+    name: mindspend-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
