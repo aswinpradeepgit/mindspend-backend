@@ -16,7 +16,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
+    # Env-listed origins (e.g. the future Vercel URL) ...
     allow_origins=settings.cors_origins,
+    # ... plus any localhost port (web dev) and the Capacitor native WebView
+    # origins (Android: https://localhost, iOS: capacitor://localhost) so the
+    # APK can call the API.
+    allow_origin_regex=r"^(https?://localhost(:\d+)?|capacitor://localhost)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
