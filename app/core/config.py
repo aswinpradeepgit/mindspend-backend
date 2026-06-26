@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     def jwks_url(self) -> str:
         return self.SUPABASE_URL.rstrip("/") + "/auth/v1/.well-known/jwks.json"
 
+    # AI Coach — Google Gemini (free tier). Server-side only.
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+    COACH_CACHE_HOURS: int = 12  # how long a generated insight stays fresh
+
     # CORS — comma-separated list of allowed frontend origins.
     # e.g. "http://localhost:3000,https://your-app.vercel.app"
     # Capacitor apps send Origin "capacitor://localhost" (iOS) and
