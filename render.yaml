@@ -10,6 +10,8 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/v1/health
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
       - key: ENV
         value: production
       - key: DATABASE_URL
