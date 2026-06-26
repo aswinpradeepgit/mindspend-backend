@@ -35,3 +35,16 @@ class ExpenseOut(BaseModel):
     would_spend_less: bool | None
     xp_awarded: int
     created_at: datetime
+
+
+# Returned by POST /expenses — the new expense plus the server-computed
+# profile state and any badges that just unlocked. Avoids extra round-trips.
+class ExpenseCreateResult(BaseModel):
+    expense: ExpenseOut
+    profile: "ProfileOut"
+    new_badges: list[str]
+
+
+from app.schemas.profile import ProfileOut  # noqa: E402  (avoid circular import at top)
+
+ExpenseCreateResult.model_rebuild()
