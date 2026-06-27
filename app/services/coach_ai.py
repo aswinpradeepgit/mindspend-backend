@@ -18,6 +18,39 @@ logger = logging.getLogger(__name__)
 
 NEGATIVE_EMOTIONS = {"anxious", "guilty", "impulsive", "stressed"}
 
+_CURRENCY_SYMBOLS = {"INR": "₹", "USD": "$", "EUR": "€", "GBP": "£"}
+
+
+def _months_factor(period: str) -> float:
+    """Scale a period total to a monthly figure (weekly → ~4.3×, monthly → 1×)."""
+    return 30 / 7 if period == "weekly" else 1.0
+
+
+def _humanize(stats: dict) -> dict:
+    """Model-friendly view of the aggregate: amounts in MAIN currency units (not
+    paise) + a currency symbol, so the LLM never sees or echoes raw minor units."""
+    sym = _CURRENCY_SYMBOLS.get(stats["currency"], stats["currency"] + " ")
+
+    def major(m: int | None) -> float:
+        return round((m or 0) / 100, 2)
+
+    def major_map(d: dict) -> dict:
+        return {k: major(v) for k, v in d.items()}
+
+    return {
+        "currency": stats["currency"],
+        "currency_symbol": sym,
+        "period": stats["period"],
+        "monthly_budget": major(stats["monthly_budget_minor"]) if stats["monthly_budget_minor"] else None,
+        "expense_count": stats["expense_count"],
+        "total_spent": major(stats["total_spent_minor"]),
+        "by_category": major_map(stats["by_category_minor"]),
+        "by_emotion": major_map(stats["by_emotion_minor"]),
+        "by_intent": major_map(stats["by_intent_minor"]),
+        "regret_rate": stats["regret_rate"],
+        "no_regret_rate": stats["no_regret_rate"],
+    }
+
 
 # ── Aggregation ──────────────────────────────────────────────────────────────
 def aggregate(expenses: list[Expense], profile: Profile, period: str) -> dict:
@@ -56,8 +89,13 @@ PROMPT = """You are MindSpend's empathetic financial coach. Analyze this user's 
 recent spending, which is tagged with emotions and intent. Give specific, warm, \
 non-judgmental, quantified coaching that helps them save and spend mindfully.
 
-All money values are integer MINOR units ({currency}, e.g. paise/cents). When you \
-estimate savings, return them as integer minor units too.
+Money in the data is in MAIN units of {currency} (NOT paise/cents); the currency \
+symbol is "{symbol}". In ALL your text, write money as the symbol followed by the \
+amount with thousands separators (e.g. {symbol}11,490). NEVER output a bare number \
+without the symbol, and NEVER write "minor units", "paise" or "cents".
+
+The totals cover the user's "{period}" window — when you estimate a MONTHLY saving, \
+project it to a full month.
 
 Data (JSON):
 {data}
@@ -69,18 +107,28 @@ Return ONLY valid JSON, no markdown, matching exactly:
     {{"title": "short punchy title",
       "body": "1-2 specific sentences tied to their data",
       "severity": "tip" | "opportunity" | "win",
-      "estimated_monthly_saving": <integer minor units, or 0>}}
+      "estimated_monthly_saving": <number in {symbol} main units (NOT paise), or 0>}}
   ]
 }}
 Give 2-4 recommendations. Include at least one "win" if they did well."""
 
 
 def generate_with_llm(stats: dict) -> dict:
-    prompt = PROMPT.format(currency=stats["currency"], data=json.dumps(stats))
+    human = _humanize(stats)
+    prompt = PROMPT.format(
+        currency=human["currency"],
+        symbol=human["currency_symbol"],
+        period=human["period"],
+        data=json.dumps(human, ensure_ascii=False),
+    )
     data = complete_json(prompt, timeout=25.0)
-    # minimal shape guard
     if "recommendations" not in data:
         raise ValueError("bad shape")
+    # Model returns savings in MAIN units; convert back to minor units for the
+    # client (which formats with formatMoney(minorUnits)).
+    for r in data["recommendations"]:
+        v = r.get("estimated_monthly_saving")
+        r["estimated_monthly_saving"] = int(round(float(v) * 100)) if isinstance(v, (int, float)) else 0
     return data
 
 
@@ -101,7 +149,8 @@ def rules_fallback(stats: dict) -> dict:
                 "body": f"{round(share*100)}% of recent spending happened while feeling {k}. "
                         "Try a 10-minute pause before buying in that mood.",
                 "severity": "opportunity",
-                "estimated_monthly_saving": int(v * 0.5),
+                # Half the emotion-driven spend, projected to a full month.
+                "estimated_monthly_saving": int(v * 0.5 * _months_factor(stats["period"])),
             })
 
     if stats["no_regret_rate"] > 0.7:
