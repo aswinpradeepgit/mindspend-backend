@@ -3,6 +3,7 @@
 Every query is scoped to the authenticated user's id (from the verified JWT).
 """
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,7 +17,14 @@ from app.core.security import CurrentUser, get_current_user
 from app.models.custom_category import CustomCategory
 from app.models.expense import Expense
 from app.schemas.expense import ExpenseCreate, ExpenseCreateResult, ExpenseOut
-from app.services.nl_parse import BUILTIN_CATEGORIES, parse_expense
+from app.services.nl_parse import (
+    BUILTIN_CATEGORIES,
+    is_rate_limit_error,
+    parse_expense,
+    regex_parse_expense,
+)
+
+logger = logging.getLogger(__name__)
 from app.services.profile_service import (
     create_expense_with_gamification,
     delete_expense as delete_expense_service,
@@ -36,6 +44,9 @@ class ParseResult(BaseModel):
     description: str
     emotion: str | None
     intent: str | None
+    # False when the LLM was unavailable (no key / quota / error) and the result
+    # came from the regex fallback — the client uses this to soften its message.
+    ai_used: bool = True
 
 
 @router.get("", response_model=list[ExpenseOut])
@@ -70,9 +81,8 @@ async def parse_natural_language(
     user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ParseResult:
-    if not settings.GEMINI_API_KEY:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "AI parsing not available")
-    if not payload.text.strip():
+    text = payload.text.strip()
+    if not text:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty text")
 
     custom = (
@@ -80,11 +90,18 @@ async def parse_natural_language(
     ).scalars().all()
     categories = BUILTIN_CATEGORIES + [{"id": str(c.id), "label": c.label} for c in custom]
 
-    try:
-        result = parse_expense(payload.text, categories)
-    except Exception:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Couldn't understand that — try rephrasing")
-    return ParseResult(**result)
+    # Try the LLM; on any failure (no key, quota/429, parse error) fall back to a
+    # regex parse so the user still gets a pre-filled form instead of a dead end.
+    if settings.GEMINI_API_KEY:
+        try:
+            return ParseResult(ai_used=True, **parse_expense(text, categories))
+        except Exception as exc:
+            if is_rate_limit_error(exc):
+                logger.warning("NL parse: Gemini rate-limited (429), using regex fallback")
+            else:
+                logger.warning("NL parse: Gemini failed (%s), using regex fallback", exc)
+
+    return ParseResult(ai_used=False, **regex_parse_expense(text, categories))
 
 
 @router.delete("/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)
