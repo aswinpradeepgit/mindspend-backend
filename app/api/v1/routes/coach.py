@@ -12,7 +12,7 @@ from app.core.security import CurrentUser, get_current_user
 from app.models.ai_insight import AiInsight
 from app.models.expense import Expense
 from app.services.coach_ai import generate_coach
-from app.services.profile_service import get_profile
+from app.services.profile_service import get_category_labels, get_profile
 
 router = APIRouter()
 settings = get_settings()
@@ -42,10 +42,11 @@ async def get_coach(
 
     # 2. Generate (Gemini, or rules fallback).
     profile = await get_profile(db, user.id)
+    labels = await get_category_labels(db, user.id)
     expenses = (
         await db.execute(select(Expense).where(Expense.user_id == user.id))
     ).scalars().all()
-    payload = generate_coach(list(expenses), profile, period)
+    payload = generate_coach(list(expenses), profile, period, labels)
 
     # 3. Replace the cache for this period.
     await db.execute(

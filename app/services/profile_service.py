@@ -20,6 +20,19 @@ from app.schemas.profile import BadgeOut, ProfileOut
 from app.services.badges import evaluate_badges
 from app.services.gamification import calculate_xp, update_streak
 from app.services.levels import level_from_xp
+from app.services.nl_parse import BUILTIN_CATEGORIES
+
+
+async def get_category_labels(db: AsyncSession, user_id: uuid.UUID) -> dict[str, str]:
+    """Map every category id (built-in + the user's custom UUIDs) → its label,
+    so AI features show names instead of raw ids."""
+    labels = {c["id"]: c["label"] for c in BUILTIN_CATEGORIES}
+    rows = (
+        await db.execute(select(CustomCategory).where(CustomCategory.user_id == user_id))
+    ).scalars().all()
+    for c in rows:
+        labels[str(c.id)] = c.label
+    return labels
 
 
 async def get_profile(db: AsyncSession, user_id: uuid.UUID) -> Profile:

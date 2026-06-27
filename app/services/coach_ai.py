@@ -47,16 +47,22 @@ def _humanize(stats: dict) -> dict:
         "by_category": major_map(stats["by_category_minor"]),
         "by_emotion": major_map(stats["by_emotion_minor"]),
         "by_intent": major_map(stats["by_intent_minor"]),
-        "regret_rate": stats["regret_rate"],
-        "no_regret_rate": stats["no_regret_rate"],
+        "regret_percent": round(stats["regret_rate"] * 100),
+        "no_regret_percent": round(stats["no_regret_rate"] * 100),
     }
 
 
 # ── Aggregation ──────────────────────────────────────────────────────────────
-def aggregate(expenses: list[Expense], profile: Profile, period: str) -> dict:
+def aggregate(
+    expenses: list[Expense],
+    profile: Profile,
+    period: str,
+    category_labels: dict[str, str] | None = None,
+) -> dict:
     cutoff = date.today() - timedelta(days=7 if period == "weekly" else 30)
     recent = [e for e in expenses if e.date >= cutoff]
     total = sum(e.amount for e in recent)
+    labels = category_labels or {}
 
     def group(key) -> dict[str, int]:
         out: dict[str, int] = {}
@@ -70,13 +76,15 @@ def aggregate(expenses: list[Expense], profile: Profile, period: str) -> dict:
     noregret_ct = sum(1 for e in recent if e.regret is False)
     n = len(recent)
 
+    # Group categories by human label (resolves built-in ids + custom UUIDs) so
+    # the LLM never sees a raw category id.
     return {
         "period": period,
         "currency": profile.currency,
         "monthly_budget_minor": profile.monthly_budget,
         "expense_count": n,
         "total_spent_minor": total,
-        "by_category_minor": group(lambda e: e.category),
+        "by_category_minor": group(lambda e: labels.get(e.category, e.category)),
         "by_emotion_minor": group(lambda e: e.emotion),
         "by_intent_minor": group(lambda e: e.intent),
         "regret_rate": round(regret_ct / n, 2) if n else 0,
@@ -172,8 +180,13 @@ def rules_fallback(stats: dict) -> dict:
     return {"summary": "Here's a quick read on your recent spending.", "recommendations": recs}
 
 
-def generate_coach(expenses: list[Expense], profile: Profile, period: str) -> dict:
-    stats = aggregate(expenses, profile, period)
+def generate_coach(
+    expenses: list[Expense],
+    profile: Profile,
+    period: str,
+    category_labels: dict[str, str] | None = None,
+) -> dict:
+    stats = aggregate(expenses, profile, period, category_labels)
     if stats["expense_count"] >= 3 and has_llm():
         try:
             return generate_with_llm(stats)

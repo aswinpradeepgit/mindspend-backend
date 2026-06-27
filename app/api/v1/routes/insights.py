@@ -12,7 +12,7 @@ from app.core.security import CurrentUser, get_current_user
 from app.models.ai_insight import AiInsight
 from app.models.expense import Expense
 from app.services.insights_ai import explain
-from app.services.profile_service import get_profile
+from app.services.profile_service import get_category_labels, get_profile
 
 router = APIRouter()
 settings = get_settings()
@@ -40,10 +40,11 @@ async def explain_month(
             return {**cached.payload, "generated_at": cached.generated_at.isoformat(), "cached": True}
 
     profile = await get_profile(db, user.id)
+    labels = await get_category_labels(db, user.id)
     expenses = (
         await db.execute(select(Expense).where(Expense.user_id == user.id))
     ).scalars().all()
-    payload = explain(list(expenses), profile, "monthly")
+    payload = explain(list(expenses), profile, "monthly", labels)
 
     await db.execute(
         delete(AiInsight).where(AiInsight.user_id == user.id, AiInsight.period == _CACHE_KEY)

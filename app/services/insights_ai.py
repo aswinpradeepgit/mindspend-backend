@@ -41,8 +41,13 @@ def _fallback(stats: dict) -> dict:
     }
 
 
-def explain(expenses: list[Expense], profile: Profile, period: str = "monthly") -> dict:
-    stats = aggregate(expenses, profile, period)
+def explain(
+    expenses: list[Expense],
+    profile: Profile,
+    period: str = "monthly",
+    category_labels: dict[str, str] | None = None,
+) -> dict:
+    stats = aggregate(expenses, profile, period, category_labels)
     if stats["expense_count"] >= 1 and has_llm():
         try:
             human = _humanize(stats)
