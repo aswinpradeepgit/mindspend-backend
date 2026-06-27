@@ -92,14 +92,14 @@ async def parse_natural_language(
 
     # Try the LLM; on any failure (no key, quota/429, parse error) fall back to a
     # regex parse so the user still gets a pre-filled form instead of a dead end.
-    if settings.GEMINI_API_KEY:
+    if settings.GROQ_API_KEY:
         try:
             return ParseResult(ai_used=True, **parse_expense(text, categories))
         except Exception as exc:
             if is_rate_limit_error(exc):
-                logger.warning("NL parse: Gemini rate-limited (429), using regex fallback")
+                logger.warning("NL parse: Groq rate-limited (429), using regex fallback")
             else:
-                logger.warning("NL parse: Gemini failed (%s), using regex fallback", exc)
+                logger.warning("NL parse: Groq failed (%s), using regex fallback", exc)
 
     return ParseResult(ai_used=False, **regex_parse_expense(text, categories))
 

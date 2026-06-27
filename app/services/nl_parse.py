@@ -1,9 +1,9 @@
-"""Natural-language expense parsing via Gemini.
+"""Natural-language expense parsing via Groq (OpenAI-compatible, free tier).
 
 Turns a sentence like "320 coffee with friends, felt happy" into structured
 fields: amount, category, description, emotion, intent. Server-side key only.
 
-If Gemini is unavailable (no key, quota/429, or any error) the route falls back
+If the LLM is unavailable (no key, quota/429, or any error) the route falls back
 to ``regex_parse_expense`` below — a best-effort, dependency-free parse so the
 add form still pre-fills the amount/description and the user can finish manually.
 """
@@ -11,7 +11,11 @@ add form still pre-fills the amount/description and the user can finish manually
 import json
 import re
 
+import httpx
+
 from app.core.config import get_settings
+
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 settings = get_settings()
 
@@ -48,21 +52,25 @@ JSON shape (use null if unknown):
 
 
 def parse_expense(text: str, categories: list[dict]) -> dict:
-    from google import genai  # lazy import
-
-    client = genai.Client(api_key=settings.GEMINI_API_KEY)
     prompt = PROMPT.format(
         text=text.replace('"', "'")[:300],
         categories=json.dumps(categories),
         emotions=sorted(EMOTIONS),
         intents=sorted(INTENTS),
     )
-    resp = client.models.generate_content(
-        model=settings.GEMINI_MODEL,
-        contents=prompt,
-        config={"response_mime_type": "application/json"},
+    resp = httpx.post(
+        GROQ_URL,
+        headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+        json={
+            "model": settings.GROQ_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.2,
+        },
+        timeout=20.0,
     )
-    raw = (resp.text or "").strip()
+    resp.raise_for_status()  # raises HTTPStatusError (incl. 429) → caught by the route
+    raw = (resp.json()["choices"][0]["message"]["content"] or "").strip()
     if raw.startswith("```"):
         raw = raw.strip("`").lstrip("json").strip()
     data = json.loads(raw)
@@ -88,9 +96,10 @@ def parse_expense(text: str, categories: list[dict]) -> dict:
 
 
 def is_rate_limit_error(exc: Exception) -> bool:
-    """True if a Gemini exception is a quota / rate-limit (HTTP 429)."""
+    """True if an LLM exception is a quota / rate-limit (HTTP 429)."""
     code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
-    if code == 429:
+    resp = getattr(exc, "response", None)  # httpx.HTTPStatusError
+    if code == 429 or getattr(resp, "status_code", None) == 429:
         return True
     text = str(exc).upper()
     return "429" in text or "RESOURCE_EXHAUSTED" in text or "TOO MANY REQUESTS" in text

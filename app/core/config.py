@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.0-flash"
     COACH_CACHE_HOURS: int = 12  # how long a generated insight stays fresh
 
+    # NL expense parsing — Groq (free tier, no billing). Server-side only.
+    # OpenAI-compatible chat-completions endpoint with JSON mode.
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+
     # CORS — comma-separated list of allowed frontend origins.
     # e.g. "http://localhost:3000,https://your-app.vercel.app"
     # Capacitor apps send Origin "capacitor://localhost" (iOS) and
