@@ -1,6 +1,6 @@
-"""AI Coach — aggregates spending+emotion data and asks Groq for personalized,
-quantified coaching. Falls back to a rules-based result if Groq is unavailable
-(no key, quota, error) so the card never breaks.
+"""AI Coach — aggregates spending+emotion data and asks the configured LLM for
+personalized, quantified coaching. Falls back to a rules-based result if the LLM
+is unavailable (no key, quota, error) so the card never breaks.
 
 All amounts are integer minor units (paise). Only aggregated numbers are sent to
 the model — never raw expense rows — for privacy and token efficiency.
@@ -10,12 +10,10 @@ import json
 import logging
 from datetime import date, timedelta
 
-from app.core.config import get_settings
 from app.models.expense import Expense
 from app.models.profile import Profile
-from app.services.groq_client import groq_json, is_rate_limit_error
+from app.services.llm import complete_json, has_llm, is_rate_limit_error
 
-settings = get_settings()
 logger = logging.getLogger(__name__)
 
 NEGATIVE_EMOTIONS = {"anxious", "guilty", "impulsive", "stressed"}
@@ -53,7 +51,7 @@ def aggregate(expenses: list[Expense], profile: Profile, period: str) -> dict:
     }
 
 
-# ── Groq ─────────────────────────────────────────────────────────────────────
+# ── LLM ──────────────────────────────────────────────────────────────────────
 PROMPT = """You are MindSpend's empathetic financial coach. Analyze this user's \
 recent spending, which is tagged with emotions and intent. Give specific, warm, \
 non-judgmental, quantified coaching that helps them save and spend mindfully.
@@ -77,9 +75,9 @@ Return ONLY valid JSON, no markdown, matching exactly:
 Give 2-4 recommendations. Include at least one "win" if they did well."""
 
 
-def generate_with_groq(stats: dict) -> dict:
+def generate_with_llm(stats: dict) -> dict:
     prompt = PROMPT.format(currency=stats["currency"], data=json.dumps(stats))
-    data = groq_json(prompt, timeout=25.0)
+    data = complete_json(prompt, timeout=25.0)
     # minimal shape guard
     if "recommendations" not in data:
         raise ValueError("bad shape")
@@ -127,12 +125,12 @@ def rules_fallback(stats: dict) -> dict:
 
 def generate_coach(expenses: list[Expense], profile: Profile, period: str) -> dict:
     stats = aggregate(expenses, profile, period)
-    if stats["expense_count"] >= 3 and settings.GROQ_API_KEY:
+    if stats["expense_count"] >= 3 and has_llm():
         try:
-            return generate_with_groq(stats)
+            return generate_with_llm(stats)
         except Exception as exc:
             if is_rate_limit_error(exc):
-                logger.warning("AI Coach: Groq rate-limited (429), using rules fallback")
+                logger.warning("AI Coach: LLM rate-limited (429), using rules fallback")
             else:
-                logger.warning("AI Coach: Groq failed (%s), using rules fallback", exc)
+                logger.warning("AI Coach: LLM failed (%s), using rules fallback", exc)
     return rules_fallback(stats)

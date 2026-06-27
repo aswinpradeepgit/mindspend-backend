@@ -38,10 +38,28 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.0-flash"
     COACH_CACHE_HOURS: int = 12  # how long a generated insight stays fresh
 
-    # NL expense parsing — Groq (free tier, no billing). Server-side only.
-    # OpenAI-compatible chat-completions endpoint with JSON mode.
+    # LLM provider (provider-agnostic) — powers the AI Coach, NL expense parsing,
+    # and push-notification copy. The whole app calls app/services/llm.py; only
+    # this config knows about providers. Most providers (Groq, OpenAI, OpenRouter,
+    # Together, Fireworks, DeepInfra, local servers) share the OpenAI-compatible
+    # chat-completions API, so switching to one of them is just these env vars —
+    # no code change. An exotic provider needs only a new adapter in llm.py.
+    LLM_PROVIDER: str = "groq"  # selector; known OpenAI-compatible bases live in llm.py
+    LLM_BASE_URL: str = ""  # blank → derived from LLM_PROVIDER
+    LLM_API_KEY: str = ""  # blank → falls back to GROQ_API_KEY
+    LLM_MODEL: str = ""  # blank → falls back to GROQ_MODEL
+
+    # Groq (the default provider). Free tier, no billing. Server-side only.
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
+
+    # Push notifications (FCM) + the daily cron that triggers them.
+    NOTIFICATIONS_ENABLED: bool = True  # global kill switch
+    INTERNAL_CRON_SECRET: str = ""  # shared secret guarding /internal/run-notifications
+    FCM_PROJECT_ID: str = ""  # Firebase project id
+    FCM_SERVICE_ACCOUNT_JSON: str = ""  # full service-account JSON (string) — server-side only
+    # Minutes east of UTC for "today" math (streak/log-date comparisons). IST = 330.
+    APP_TZ_OFFSET_MINUTES: int = 330
 
     # CORS — comma-separated list of allowed frontend origins.
     # e.g. "http://localhost:3000,https://your-app.vercel.app"

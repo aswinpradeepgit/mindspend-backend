@@ -1,0 +1,31 @@
+name: Daily push notifications
+
+# Triggers the backend's notification pass once a day. Free (GitHub-hosted),
+# and the request also wakes the sleeping Render free instance.
+on:
+  schedule:
+    # 14:30 UTC = 20:00 IST (evening: streak-rescue + nightly wrap-up).
+    # Note: GitHub may delay scheduled runs by a few minutes under load.
+    - cron: "30 14 * * *"
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call run-notifications
+        env:
+          API_URL: https://mindspend-api.onrender.com
+          CRON_SECRET: ${{ secrets.INTERNAL_CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::INTERNAL_CRON_SECRET repo secret is not set"; exit 1
+          fi
+          # --max-time 120 covers Render free-tier cold start (~50s).
+          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" --max-time 120 \
+            -X POST "$API_URL/api/v1/internal/run-notifications" \
+            -H "X-Cron-Secret: $CRON_SECRET")
+          echo "HTTP $code"
+          cat /tmp/resp.json || true
+          echo
+          test "$code" = "200"

@@ -86,6 +86,31 @@ create table if not exists public.ai_insights (
 );
 create index if not exists ai_insights_user_period_idx on public.ai_insights (user_id, period);
 
+-- ── device_tokens (push notifications) ───────────────────────────────────────
+-- One row per (user, device push token). Used to send FCM push notifications.
+create table if not exists public.device_tokens (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  token       text not null unique,          -- FCM registration token
+  platform    text not null default 'android',
+  enabled     boolean not null default true,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+create index if not exists device_tokens_user_idx on public.device_tokens (user_id);
+
+-- ── notification_log ─────────────────────────────────────────────────────────
+-- One row per push sent. Used for frequency capping (max 1/day) + analytics.
+create table if not exists public.notification_log (
+  id        uuid primary key default gen_random_uuid(),
+  user_id   uuid not null references auth.users(id) on delete cascade,
+  type      text not null,                   -- 'streak_rescue' | 'nightly_wrapup' | ...
+  title     text not null default '',
+  body      text not null default '',
+  sent_at   timestamptz not null default now()
+);
+create index if not exists notification_log_user_sent_idx on public.notification_log (user_id, sent_at desc);
+
 -- ── Row-Level Security ───────────────────────────────────────────────────────
 alter table public.profiles          enable row level security;
 alter table public.expenses          enable row level security;
@@ -93,12 +118,14 @@ alter table public.custom_categories enable row level security;
 alter table public.goals             enable row level security;
 alter table public.badges            enable row level security;
 alter table public.ai_insights       enable row level security;
+alter table public.device_tokens     enable row level security;
+alter table public.notification_log  enable row level security;
 
 -- Owner-only access for the `authenticated` role. (auth.uid() is the JWT subject.)
 do $$
 declare t text;
 begin
-  foreach t in array array['expenses','custom_categories','goals','badges','ai_insights']
+  foreach t in array array['expenses','custom_categories','goals','badges','ai_insights','device_tokens','notification_log']
   loop
     execute format($f$
       create policy %1$s_select on public.%1$s for select to authenticated using (auth.uid() = user_id);

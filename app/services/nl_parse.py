@@ -11,9 +11,9 @@ add form still pre-fills the amount/description and the user can finish manually
 import json
 import re
 
-# Shared Groq call + 429 detection. ``is_rate_limit_error`` is re-exported so the
-# expenses route can keep importing it from here.
-from app.services.groq_client import groq_json, is_rate_limit_error  # noqa: F401
+# Provider-agnostic LLM call + 429 detection. ``is_rate_limit_error`` is
+# re-exported so the expenses route can keep importing it from here.
+from app.services.llm import complete_json, is_rate_limit_error  # noqa: F401
 
 BUILTIN_CATEGORIES = [
     {"id": "food", "label": "Food & Drink"},
@@ -54,7 +54,7 @@ def parse_expense(text: str, categories: list[dict]) -> dict:
         emotions=sorted(EMOTIONS),
         intents=sorted(INTENTS),
     )
-    data = groq_json(prompt)  # raises (incl. 429) → caught by the route
+    data = complete_json(prompt)  # raises (incl. 429) → caught by the route
 
     valid_ids = {c["id"] for c in categories}
     category = data.get("category")
