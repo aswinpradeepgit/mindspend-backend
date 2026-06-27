@@ -27,9 +27,14 @@ settings = get_settings()
 
 
 class LLMClient(Protocol):
-    """Anything that can turn a prompt into a parsed JSON object."""
+    """Turns a prompt into JSON, or a chat message list into text."""
 
     def complete_json(self, prompt: str, *, temperature: float = 0.2, timeout: float = 20.0) -> dict:
+        ...
+
+    def complete_text(
+        self, messages: list[dict], *, temperature: float = 0.4, timeout: float = 30.0
+    ) -> str:
         ...
 
 
@@ -59,6 +64,18 @@ class OpenAICompatibleClient:
         if raw.startswith("```"):
             raw = raw.strip("`").lstrip("json").strip()
         return json.loads(raw)
+
+    def complete_text(
+        self, messages: list[dict], *, temperature: float = 0.4, timeout: float = 30.0
+    ) -> str:
+        resp = httpx.post(
+            self._url,
+            headers={"Authorization": f"Bearer {self._key}"},
+            json={"model": self._model, "messages": messages, "temperature": temperature},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        return (resp.json()["choices"][0]["message"]["content"] or "").strip()
 
 
 # Known OpenAI-compatible providers → base URL. Add more freely; or set
@@ -102,6 +119,13 @@ def get_llm() -> LLMClient:
 def complete_json(prompt: str, *, temperature: float = 0.2, timeout: float = 20.0) -> dict:
     """Provider-agnostic JSON completion. Raises on failure (incl. 429)."""
     return get_llm().complete_json(prompt, temperature=temperature, timeout=timeout)
+
+
+def complete_text(
+    messages: list[dict], *, temperature: float = 0.4, timeout: float = 30.0
+) -> str:
+    """Provider-agnostic chat completion returning plain text. Raises on failure."""
+    return get_llm().complete_text(messages, temperature=temperature, timeout=timeout)
 
 
 def has_llm() -> bool:

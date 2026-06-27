@@ -12,7 +12,7 @@ from datetime import date, timedelta
 
 from app.models.expense import Expense
 from app.models.profile import Profile
-from app.services.llm import complete_json, has_llm, is_rate_limit_error
+from app.services.llm import complete_json, complete_text, has_llm, is_rate_limit_error
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +178,39 @@ def rules_fallback(stats: dict) -> dict:
         })
 
     return {"summary": "Here's a quick read on your recent spending.", "recommendations": recs}
+
+
+# ── Conversational coach ─────────────────────────────────────────────────────
+_CHAT_SYSTEM = """You are MindSpend's warm, encouraging money coach, chatting with \
+the user. Answer their question using the spending data below — be specific and \
+reference real numbers when relevant. Keep replies short (2-4 sentences), friendly \
+and non-judgmental, never preachy. Money is in {symbol}; always format as the symbol \
++ amount (e.g. {symbol}1,200), never raw numbers or "minor units". If they ask \
+something unrelated to their money/spending, gently steer back.
+
+User's recent spending data (JSON): {data}"""
+
+
+def chat(
+    expenses: list[Expense],
+    profile: Profile,
+    message: str,
+    history: list[dict],
+    category_labels: dict[str, str] | None = None,
+) -> str:
+    """One conversational turn, grounded in the user's aggregated data."""
+    human = _humanize(aggregate(expenses, profile, "monthly", category_labels))
+    system = _CHAT_SYSTEM.format(
+        symbol=human["currency_symbol"], data=json.dumps(human, ensure_ascii=False)
+    )
+    messages = [{"role": "system", "content": system}]
+    for h in history[-8:]:  # cap history to control tokens
+        role = h.get("role")
+        content = (h.get("content") or "")[:1000]
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": message[:1000]})
+    return complete_text(messages, timeout=30.0)
 
 
 def generate_coach(
