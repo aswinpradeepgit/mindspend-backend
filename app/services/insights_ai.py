@@ -41,6 +41,47 @@ def _fallback(stats: dict) -> dict:
     }
 
 
+_REFLECT_PROMPT = """You are MindSpend's emotionally-intelligent journal companion. \
+In 2-3 warm, perceptive sentences, reflect on the EMOTIONS behind this week's \
+spending — when the user spent feeling good vs. stressed/guilty/impulsive, what that \
+hints at, and one kind, non-judgmental observation. Speak directly ("you"). If money \
+is mentioned, write it as "{symbol}" + a formatted amount. No "minor units"/"paise".
+
+Data (JSON):
+{data}
+
+Return ONLY JSON: {{"reflection": "<2-3 sentences>"}}"""
+
+
+def reflect(
+    expenses: list[Expense],
+    profile: Profile,
+    category_labels: dict[str, str] | None = None,
+) -> dict:
+    """Emotion-focused weekly reflection for the Journal (distinct from the
+    savings-focused coach/explain)."""
+    stats = aggregate(expenses, profile, "weekly", category_labels)
+    if stats["expense_count"] >= 1 and has_llm():
+        try:
+            human = _humanize(stats)
+            data = complete_json(
+                _REFLECT_PROMPT.format(
+                    symbol=human["currency_symbol"],
+                    data=json.dumps(human, ensure_ascii=False),
+                ),
+                timeout=20.0,
+            )
+            r = str(data.get("reflection") or "").strip()
+            if r:
+                return {"reflection": r[:600]}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("reflection: LLM failed (%s), using fallback", exc)
+    n = stats["expense_count"]
+    if n == 0:
+        return {"reflection": "Your emotional spending story will appear here once you log a few expenses with the check-in. Every entry is a little note to your future self. 💜"}
+    return {"reflection": "Keep logging how each spend feels — over a week, the patterns between your mood and money start to tell a story worth reading."}
+
+
 def explain(
     expenses: list[Expense],
     profile: Profile,
