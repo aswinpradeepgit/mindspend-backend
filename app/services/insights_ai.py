@@ -82,6 +82,55 @@ def reflect(
     return {"reflection": "Keep logging how each spend feels — over a week, the patterns between your mood and money start to tell a story worth reading."}
 
 
+_PERSONALITY_PROMPT = """Based on this user's recent spending emotions, intent and \
+regret, give them a playful but encouraging "money personality" archetype.
+
+Data (JSON):
+{data}
+
+Return ONLY JSON:
+{{"archetype": "2-4 words, e.g. 'The Mindful Maven', 'The Joyful Giver', 'The Stress \
+Spender'", "emoji": "one single emoji that fits", "why": "1-2 warm, specific \
+sentences citing their actual pattern"}}
+Lean positive and aspirational if they're improving (low regret, mostly positive \
+emotions). Never shame them."""
+
+
+def personality(
+    expenses: list[Expense],
+    profile: Profile,
+    category_labels: dict[str, str] | None = None,
+) -> dict:
+    """An evolving 'money personality' archetype from emotion/regret patterns."""
+    stats = aggregate(expenses, profile, "monthly", category_labels)
+    if stats["expense_count"] >= 3 and has_llm():
+        try:
+            human = _humanize(stats)
+            data = complete_json(
+                _PERSONALITY_PROMPT.format(data=json.dumps(human, ensure_ascii=False)),
+                temperature=0.6,
+            )
+            arch = str(data.get("archetype") or "").strip()
+            if arch:
+                return {
+                    "archetype": arch[:40],
+                    "emoji": (str(data.get("emoji") or "🧬").strip() or "🧬")[:4],
+                    "why": str(data.get("why") or "").strip()[:300],
+                }
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("personality: LLM failed (%s), using fallback", exc)
+
+    n = stats["expense_count"]
+    if n == 0:
+        return {"archetype": "The Blank Slate", "emoji": "🌱", "why": "Log a few expenses with the check-in and your money personality will emerge."}
+    regret = stats["regret_rate"]
+    if regret >= 0.4:
+        return {"archetype": "The Impulse Explorer", "emoji": "⚡", "why": "You spend in the moment and feel it after. A 10-second pause before buying could change the story."}
+    if regret <= 0.15:
+        return {"archetype": "The Mindful Maven", "emoji": "🧘", "why": "You spend with intention and rarely look back — your future self is grateful."}
+    return {"archetype": "The Steady Tracker", "emoji": "📊", "why": "You're building real awareness, one mindful log at a time. Momentum is on your side."}
+
+
 def explain(
     expenses: list[Expense],
     profile: Profile,
