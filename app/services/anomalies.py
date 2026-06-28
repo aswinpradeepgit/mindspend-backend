@@ -120,27 +120,7 @@ def detect_anomalies(
                 "detail": f"About {round(biggest.amount / typical)}× your typical expense — just checking it was intentional!",
             })
 
-    # 5. Budget pace — projected month-end spend vs the monthly budget.
-    if profile.monthly_budget and profile.monthly_budget > 0:
-        month_start = today.replace(day=1)
-        month_exp = sum(e.amount for e in expenses if month_start <= e.date <= today)
-        days_elapsed = (today - month_start).days + 1
-        next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
-        days_in_month = (next_month - month_start).days
-        if days_elapsed >= 3 and month_exp > 0:
-            projected = month_exp * days_in_month / days_elapsed
-            if projected > profile.monthly_budget * 1.05:
-                over = projected - profile.monthly_budget
-                out.append({
-                    "type": "budget_pace",
-                    "severity": "alert",
-                    "emoji": "🚨",
-                    "title": "On track to exceed your budget",
-                    "detail": (
-                        f"At this pace you'll spend ~{fmt(int(projected))} this month — about "
-                        f"{fmt(int(over))} over your {fmt(profile.monthly_budget)} budget."
-                    ),
-                })
+    # (Budget pace lives in the richer "forecast" proactive insight.)
 
     out.sort(key=lambda a: _SEV_ORDER[a["severity"]], reverse=True)
     return out[:4]

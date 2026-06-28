@@ -11,8 +11,10 @@ from app.core.db import get_db
 from app.core.security import CurrentUser, get_current_user
 from app.models.ai_insight import AiInsight
 from app.models.expense import Expense
+from app.models.goal import Goal
 from app.services.anomalies import detect_anomalies
 from app.services.insights_ai import explain
+from app.services.proactive import proactive_insights
 from app.services.profile_service import get_category_labels, get_profile
 
 router = APIRouter()
@@ -74,3 +76,20 @@ async def anomalies(
         await db.execute(select(Expense).where(Expense.user_id == user.id))
     ).scalars().all()
     return {"anomalies": detect_anomalies(list(expenses), profile, labels)}
+
+
+@router.get("/proactive")
+async def proactive(
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Forecast + budget suggestions + recurring charges + goal motivation."""
+    profile = await get_profile(db, user.id)
+    labels = await get_category_labels(db, user.id)
+    expenses = (
+        await db.execute(select(Expense).where(Expense.user_id == user.id))
+    ).scalars().all()
+    goals = (
+        await db.execute(select(Goal).where(Goal.user_id == user.id))
+    ).scalars().all()
+    return proactive_insights(list(expenses), list(goals), profile, labels)
