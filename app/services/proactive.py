@@ -153,16 +153,28 @@ def goal_motivation(goals: list[Goal], profile: Profile, today: date) -> list[di
             item["message"] = f"So close — just {_fmt(remaining, cur)} more and {g.name} is yours! 🔥"
         elif g.target_date:
             days_left = (g.target_date - today).days
-            if days_left > 0:
-                per_month = remaining / max(1.0, days_left / 30)
+            when = g.target_date.strftime("%b %Y")
+            pct_txt = round(pct * 100)
+            if days_left <= 0:
                 item["message"] = (
-                    f"{round(pct * 100)}% there! Tuck away about {_fmt(round(per_month), cur)}/month "
-                    f"to reach {g.name} by {g.target_date.strftime('%b %Y')} 🎯"
+                    f"{g.name}'s date has passed — {_fmt(remaining, cur)} to go. "
+                    "Reset the date and keep going 💪"
+                )
+            elif days_left < 14:
+                item["message"] = (
+                    f"{pct_txt}% there — just {_fmt(remaining, cur)} left before {when}. Home stretch! 🏁"
+                )
+            elif days_left < 45:
+                per_week = remaining / (days_left / 7)
+                item["message"] = (
+                    f"{pct_txt}% there! Save about {_fmt(round(per_week), cur)}/week "
+                    f"to reach {g.name} by {when} 🎯"
                 )
             else:
+                per_month = remaining / (days_left / 30)
                 item["message"] = (
-                    f"{g.name}'s date has slipped by — {_fmt(remaining, cur)} to go. "
-                    "Reset the date and keep going 💪"
+                    f"{pct_txt}% there! Save about {_fmt(round(per_month), cur)}/month "
+                    f"to reach {g.name} by {when} 🎯"
                 )
         else:
             item["message"] = (
