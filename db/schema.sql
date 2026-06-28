@@ -111,6 +111,22 @@ create table if not exists public.notification_log (
 );
 create index if not exists notification_log_user_sent_idx on public.notification_log (user_id, sent_at desc);
 
+-- ── commitments (EMIs + subscriptions) ───────────────────────────────────────
+create table if not exists public.commitments (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  type        text not null,                   -- 'emi' | 'subscription'
+  name        text not null,
+  amount      bigint not null,                 -- minor units, per cycle
+  cycle       text not null default 'monthly', -- 'monthly' | 'yearly' | 'weekly'
+  due_day     int,
+  months_left int,
+  icon        text not null default '',
+  active      boolean not null default true,
+  created_at  timestamptz not null default now()
+);
+create index if not exists commitments_user_idx on public.commitments (user_id);
+
 -- ── Row-Level Security ───────────────────────────────────────────────────────
 alter table public.profiles          enable row level security;
 alter table public.expenses          enable row level security;
@@ -120,12 +136,13 @@ alter table public.badges            enable row level security;
 alter table public.ai_insights       enable row level security;
 alter table public.device_tokens     enable row level security;
 alter table public.notification_log  enable row level security;
+alter table public.commitments       enable row level security;
 
 -- Owner-only access for the `authenticated` role. (auth.uid() is the JWT subject.)
 do $$
 declare t text;
 begin
-  foreach t in array array['expenses','custom_categories','goals','badges','ai_insights','device_tokens','notification_log']
+  foreach t in array array['expenses','custom_categories','goals','badges','ai_insights','device_tokens','notification_log','commitments']
   loop
     execute format($f$
       create policy %1$s_select on public.%1$s for select to authenticated using (auth.uid() = user_id);

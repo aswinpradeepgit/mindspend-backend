@@ -8,6 +8,7 @@ from fastapi import APIRouter
 from app.api.v1.routes import (
     categories,
     coach,
+    commitments,
     devices,
     expenses,
     goals,
@@ -25,5 +26,6 @@ api_router.include_router(goals.router, prefix="/goals", tags=["goals"])
 api_router.include_router(categories.router, prefix="/categories", tags=["categories"])
 api_router.include_router(coach.router, prefix="/coach", tags=["coach"])
 api_router.include_router(insights.router, prefix="/insights", tags=["insights"])
+api_router.include_router(commitments.router, prefix="/commitments", tags=["commitments"])
 api_router.include_router(devices.router, prefix="/devices", tags=["devices"])
 api_router.include_router(notifications.router, prefix="/internal", tags=["internal"])

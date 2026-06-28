@@ -1,6 +1,7 @@
 from app.models.ai_insight import AiInsight
 from app.models.badge import Badge
 from app.models.base import Base
+from app.models.commitment import Commitment
 from app.models.custom_category import CustomCategory
 from app.models.device_token import DeviceToken
 from app.models.expense import Expense
@@ -18,4 +19,5 @@ __all__ = [
     "AiInsight",
     "DeviceToken",
     "NotificationLog",
+    "Commitment",
 ]
